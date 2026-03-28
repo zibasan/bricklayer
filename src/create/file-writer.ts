@@ -1,14 +1,15 @@
+import cliProgress from 'cli-progress';
 import fs from 'fs/promises';
 import path from 'path';
-import cliProgress from 'cli-progress';
-import { ProjectAnswers } from './types.js';
 import * as templates from './templates.js';
+import { ProjectAnswers } from './types.js';
 
 export async function writeProjectFiles(
   targetDir: string,
   answers: ProjectAnswers,
   versions?: Record<string, string>
 ) {
+  const useBiome = answers.linterFormatter === 'biome';
   const progressBar = new cliProgress.SingleBar({
     format: 'Creating files |{bar}| {percentage}% | {value}/{total} files',
     barCompleteChar: '\u2588',
@@ -23,13 +24,17 @@ export async function writeProjectFiles(
     'src/commands/hello.ts',
     'README.md',
     '.gitignore',
-    '.prettierignore',
     '.npmignore',
     '.editorconfig',
     'LICENSE',
   ];
-  tasks.push('.prettierrc');
-  tasks.push('eslint.config.js');
+  if (useBiome) {
+    tasks.push('biome.json');
+  } else {
+    tasks.push('.prettierignore');
+    tasks.push('.prettierrc');
+    tasks.push('eslint.config.js');
+  }
 
   // Add .npmrc when using pnpm
   const shouldAddNpmrc = answers.packageManager === 'pnpm';
@@ -84,13 +89,15 @@ export async function writeProjectFiles(
 
     await fs.writeFile(
       path.join(targetDir, '.husky', 'pre-push'),
-      templates.generatePrePushHook(answers.packageManager)
+      templates.generatePrePushHook(answers.packageManager, answers.linterFormatter)
     );
     progressBar.update(++completed);
   }
 
-  await fs.writeFile(path.join(targetDir, '.prettierignore'), templates.generatePrettierIgnore());
-  progressBar.update(++completed);
+  if (!useBiome) {
+    await fs.writeFile(path.join(targetDir, '.prettierignore'), templates.generatePrettierIgnore());
+    progressBar.update(++completed);
+  }
 
   await fs.writeFile(path.join(targetDir, '.npmignore'), templates.generateNpmIgnore());
   progressBar.update(++completed);
@@ -111,11 +118,16 @@ export async function writeProjectFiles(
   await fs.writeFile(path.join(targetDir, 'LICENSE'), licenseText);
   progressBar.update(++completed);
 
-  await fs.writeFile(path.join(targetDir, '.prettierrc'), templates.generatePrettierConfig());
-  progressBar.update(++completed);
+  if (useBiome) {
+    await fs.writeFile(path.join(targetDir, 'biome.json'), templates.generateBiomeConfig());
+    progressBar.update(++completed);
+  } else {
+    await fs.writeFile(path.join(targetDir, '.prettierrc'), templates.generatePrettierConfig());
+    progressBar.update(++completed);
 
-  await fs.writeFile(path.join(targetDir, 'eslint.config.js'), templates.generateEslintConfig());
-  progressBar.update(++completed);
+    await fs.writeFile(path.join(targetDir, 'eslint.config.js'), templates.generateEslintConfig());
+    progressBar.update(++completed);
+  }
 
   progressBar.stop();
   console.log('');

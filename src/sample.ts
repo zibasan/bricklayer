@@ -1,5 +1,5 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
+import { Command } from 'commander';
 
 export function sampleCommand(): Command {
   const cmd = new Command('sample');

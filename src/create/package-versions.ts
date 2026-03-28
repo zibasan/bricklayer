@@ -35,6 +35,7 @@ export async function getLatestVersions() {
     'typescript-eslint',
     '@eslint/json',
     'prettier',
+    '@biomejs/biome',
     'lint-staged',
     'commander',
     'inquirer',

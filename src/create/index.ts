@@ -1,12 +1,12 @@
-import path from 'path';
-import os from 'os';
 import chalk from 'chalk';
-import ora from 'ora';
 import { Command } from 'commander';
-import { promptProjectDetails } from './prompts.js';
+import ora from 'ora';
+import os from 'os';
+import path from 'path';
 import { writeProjectFiles } from './file-writer.js';
 import { installDependencies } from './installer.js';
 import { getLatestVersions } from './package-versions.js';
+import { promptProjectDetails } from './prompts.js';
 
 export function createCommand(): Command {
   const cmd = new Command('create');

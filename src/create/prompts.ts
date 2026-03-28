@@ -1,14 +1,41 @@
-import inquirer from 'inquirer';
-import Enquirer from 'enquirer';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Select: any = (Enquirer as any).Select || (Enquirer as any).default?.Select;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Input: any = (Enquirer as any).Input || (Enquirer as any).default?.Input;
 import chalk from 'chalk';
-import readline from 'readline';
+import Enquirer from 'enquirer';
 import fs from 'fs';
+import inquirer from 'inquirer';
 import path from 'path';
+import readline from 'readline';
 import { ProjectAnswers } from './types.js';
+
+type EnquirerChoice = { name: string; message: string };
+type EnquirerSelectOptions = {
+  name: string;
+  message: string;
+  choices: EnquirerChoice[];
+  pageSize?: number;
+};
+type EnquirerInputOptions = {
+  message: string;
+  initial?: string;
+};
+
+type EnquirerSelectInstance = { run: () => Promise<string> };
+type EnquirerInputInstance = { run: () => Promise<string> };
+
+type EnquirerSelectCtor = new (options: EnquirerSelectOptions) => EnquirerSelectInstance;
+type EnquirerInputCtor = new (options: EnquirerInputOptions) => EnquirerInputInstance;
+
+type EnquirerModuleLike = {
+  Select?: EnquirerSelectCtor;
+  Input?: EnquirerInputCtor;
+  default?: {
+    Select?: EnquirerSelectCtor;
+    Input?: EnquirerInputCtor;
+  };
+};
+
+const enquirerModule = Enquirer as unknown as EnquirerModuleLike;
+const Select = enquirerModule.Select || enquirerModule.default?.Select;
+const Input = enquirerModule.Input || enquirerModule.default?.Input;
 
 type PromptOptions = { skipName?: boolean; askDestination?: boolean };
 
@@ -35,6 +62,16 @@ export async function promptProjectDetails(
       message: 'Package manager to use:',
       choices: ['npm', 'pnpm', 'yarn', 'bun'],
       default: 'npm',
+    },
+    {
+      type: 'list',
+      name: 'linterFormatter',
+      message: 'Linter / formatter setup:',
+      choices: [
+        { name: 'ESLint + Prettier', value: 'eslint+prettier' },
+        { name: 'Biome', value: 'biome' },
+      ],
+      default: 'eslint+prettier',
     },
     {
       type: 'confirm',
@@ -103,10 +140,13 @@ export async function promptProjectDetails(
   type BottomBar = { updateBottomBar: (s: string) => void; close: () => void };
   type InquirerWithUI = { ui?: { BottomBar?: new () => BottomBar } };
   const uiWith = inquirer as unknown as InquirerWithUI;
+  const noop = () => {
+    // Intentionally no-op when BottomBar UI is unavailable.
+  };
   const bottomBar: BottomBar =
     uiWith.ui && uiWith.ui.BottomBar
       ? new uiWith.ui.BottomBar()
-      : { updateBottomBar: () => {}, close: () => {} };
+      : { updateBottomBar: noop, close: noop };
 
   const updateProgress = (n: number) => {
     const progressLine = `Project Scaffolding Progress: [${n}/${totalQuestions}]`;
@@ -150,6 +190,10 @@ export async function promptProjectDetails(
         choices.forEach((c) => {
           c.display = `◯ ${c.display}`;
         });
+
+        if (!Select || !Input) {
+          throw new Error('Enquirer Select/Input could not be resolved from the enquirer module.');
+        }
 
         const select = new Select({
           name: 'dir',

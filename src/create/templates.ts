@@ -1,5 +1,5 @@
-import { ProjectAnswers } from './types.js';
 import LICENSE_TEXTS from './licenses.js';
+import { ProjectAnswers } from './types.js';
 
 // Embedded templates (inlined so builds include templates without copying files)
 const staticTemplates = {
@@ -158,41 +158,21 @@ const staticTemplates = {
 const hooksTemplates = {
   pnpm: {
     'pre-commit': ['#!/bin/sh', '. "$(dirname "$0")/_/husky.sh"', '', 'pnpm run lint-staged'],
-    'pre-push': [
-      '#!/bin/sh',
-      '. "$(dirname "$0")/_/husky.sh"',
-      '',
-      'pnpm run lint && pnpm run format:check',
-    ],
   },
   npm: {
     'pre-commit': ['#!/bin/sh', '. "$(dirname "$0")/_/husky.sh"', '', 'npm run lint-staged'],
-    'pre-push': [
-      '#!/bin/sh',
-      '. "$(dirname "$0")/_/husky.sh"',
-      '',
-      'npm run lint && npm run format:check',
-    ],
   },
   yarn: {
     'pre-commit': ['#!/bin/sh', '. "$(dirname "$0")/_/husky.sh"', '', 'yarn lint-staged'],
-    'pre-push': [
-      '#!/bin/sh',
-      '. "$(dirname "$0")/_/husky.sh"',
-      '',
-      'yarn lint && yarn format:check',
-    ],
   },
   bun: {
     'pre-commit': ['#!/bin/sh', '. "$(dirname "$0")/_/husky.sh"', '', 'bun run lint-staged'],
-    'pre-push': [
-      '#!/bin/sh',
-      '. "$(dirname "$0")/_/husky.sh"',
-      '',
-      'bun run lint && bun run format:check',
-    ],
   },
 } as const;
+
+function isBiomeSetup(answers: ProjectAnswers): boolean {
+  return answers.linterFormatter === 'biome';
+}
 
 // Generate scripts object with OS-specific postbuild handling
 function generateScriptsWithPermissions(
@@ -209,6 +189,7 @@ function generateScriptsWithPermissions(
 
 // license texts are provided from src/create/licenses.ts
 export function generatePackageJson(answers: ProjectAnswers, versions?: Record<string, string>) {
+  const useBiome = isBiomeSetup(answers);
   const devDeps: Record<string, string> = {
     typescript: versions?.['typescript'] || '^5.7.2',
     'ts-node': versions?.['ts-node'] || '^10.9.1',
@@ -216,16 +197,19 @@ export function generatePackageJson(answers: ProjectAnswers, versions?: Record<s
     '@types/cli-progress': versions?.['@types/cli-progress'] || '^3.11.6',
     'lint-staged': versions?.['lint-staged'] || '^15.2.11',
   };
-  // Include ESLint and Prettier by default in generated projects
-  devDeps['eslint'] = versions?.['eslint'] || '^9.39.2';
-  devDeps['eslint-config-prettier'] = versions?.['eslint-config-prettier'] || '^10.1.8';
-  devDeps['eslint-plugin-prettier'] = versions?.['eslint-plugin-prettier'] || '^5.5.4';
-  devDeps['@typescript-eslint/parser'] = versions?.['@typescript-eslint/parser'] || '^8.52.0';
-  devDeps['@typescript-eslint/eslint-plugin'] =
-    versions?.['@typescript-eslint/eslint-plugin'] || '^8.52.0';
-  devDeps['typescript-eslint'] = versions?.['typescript-eslint'] || '^8.52.0';
-  devDeps['@eslint/json'] = versions?.['@eslint/json'] || '^0.1.1';
-  devDeps['prettier'] = versions?.['prettier'] || '^3.7.4';
+  if (useBiome) {
+    devDeps['@biomejs/biome'] = versions?.['@biomejs/biome'] || '^1.9.4';
+  } else {
+    devDeps['eslint'] = versions?.['eslint'] || '^9.39.2';
+    devDeps['eslint-config-prettier'] = versions?.['eslint-config-prettier'] || '^10.1.8';
+    devDeps['eslint-plugin-prettier'] = versions?.['eslint-plugin-prettier'] || '^5.5.4';
+    devDeps['@typescript-eslint/parser'] = versions?.['@typescript-eslint/parser'] || '^8.52.0';
+    devDeps['@typescript-eslint/eslint-plugin'] =
+      versions?.['@typescript-eslint/eslint-plugin'] || '^8.52.0';
+    devDeps['typescript-eslint'] = versions?.['typescript-eslint'] || '^8.52.0';
+    devDeps['@eslint/json'] = versions?.['@eslint/json'] || '^0.1.1';
+    devDeps['prettier'] = versions?.['prettier'] || '^3.7.4';
+  }
 
   // Husky should only be added when requested (useHusky)
   if ((answers as ProjectAnswers).useHusky) {
@@ -267,6 +251,37 @@ export function generatePackageJson(answers: ProjectAnswers, versions?: Record<s
 
   // When Husky is enabled, keep prepare as just 'husky' (user requested).
   const prepareScript = (answers as ProjectAnswers).useHusky ? 'husky' : buildCmdForManager(mgr);
+  const baseScripts: Record<string, string> = {
+    build: 'tsc -p tsconfig.json',
+    prepare: prepareScript,
+    prepublishOnly: buildCmdForManager(mgr),
+    dev: 'ts-node --esm src/index.ts',
+    start: 'node dist/index.js',
+    typecheck: 'tsc --noEmit',
+    'lint-staged': 'lint-staged',
+  };
+
+  const lintScripts: Record<string, string> = useBiome
+    ? {
+        format: 'biome format --write .',
+        lint: 'biome lint --write .',
+        'biome:check': 'biome check .',
+        'biome:fix': 'biome check . --write',
+      }
+    : {
+        lint: 'eslint "src/**/*.ts"',
+        'lint:fix': 'eslint "src/**/*.ts" --fix',
+        format: 'prettier --write "src/**/*.ts"',
+        'format:check': 'prettier --check "src/**/*.ts"',
+      };
+
+  const lintStagedConfig = useBiome
+    ? {
+        '*.{js,jsx,ts,tsx,json,jsonc,md}': ['biome check --write'],
+      }
+    : {
+        '*.ts': ['eslint --fix', 'prettier --write'],
+      };
 
   return {
     name: answers.npmPackageName || answers.name,
@@ -280,24 +295,10 @@ export function generatePackageJson(answers: ProjectAnswers, versions?: Record<s
       [answers.name]: './dist/index.js',
     },
     files: ['dist', 'README.md'],
-    scripts: generateScriptsWithPermissions(
-      Object.assign(
-        {
-          build: 'tsc -p tsconfig.json',
-          prepare: prepareScript,
-          prepublishOnly: buildCmdForManager(mgr),
-          dev: 'ts-node --esm src/index.ts',
-          start: 'node dist/index.js',
-          typecheck: 'tsc --noEmit',
-          lint: 'eslint "src/**/*.ts"',
-          'lint:fix': 'eslint "src/**/*.ts" --fix',
-          'lint-staged': 'lint-staged',
-          format: 'prettier --write "src/**/*.ts"',
-          'format:check': 'prettier --check "src/**/*.ts"',
-        },
-        (answers as ProjectAnswers).useHusky ? {} : {}
-      )
-    ),
+    scripts: generateScriptsWithPermissions({
+      ...baseScripts,
+      ...lintScripts,
+    }),
     keywords: ['cli', 'scaffold', 'typescript', 'generator'],
     author: answers.author,
     license: answers.license,
@@ -311,9 +312,7 @@ export function generatePackageJson(answers: ProjectAnswers, versions?: Record<s
     homepage: `https://github.com/${answers.gitOwner}/${answers.gitRepo}#readme`,
     dependencies: deps,
     devDependencies: devDeps,
-    'lint-staged': {
-      '*.ts': ['eslint --fix', 'prettier --write'],
-    },
+    'lint-staged': lintStagedConfig,
     packageManager: `${mgr}@${exactVersion(pkgManagerVersions[mgr] || '10.27.0')}`,
   };
 }
@@ -386,14 +385,28 @@ function pickManagerKey(mgr?: string) {
 
 export function generatePreCommitHook(packageManager?: string) {
   const key = pickManagerKey(packageManager);
-  const hook = (hooksTemplates as any)[key]['pre-commit'];
+  const hook = hooksTemplates[key]['pre-commit'];
   return Array.isArray(hook) ? hook.join('\n') : hook;
 }
 
-export function generatePrePushHook(packageManager?: string) {
+export function generatePrePushHook(
+  packageManager?: string,
+  linterFormatter: ProjectAnswers['linterFormatter'] = 'eslint+prettier'
+) {
   const key = pickManagerKey(packageManager);
-  const hook = (hooksTemplates as any)[key]['pre-push'];
-  return Array.isArray(hook) ? hook.join('\n') : hook;
+  const runScript =
+    key === 'yarn'
+      ? (script: string) => `yarn ${script}`
+      : key === 'bun'
+        ? (script: string) => `bun run ${script}`
+        : (script: string) => `${key} run ${script}`;
+
+  const checkCommand =
+    linterFormatter === 'biome'
+      ? 'pnpm run biome:check'
+      : `${runScript('lint')} && ${runScript('format:check')}`;
+
+  return ['#!/bin/sh', '. "$(dirname "$0")/_/husky.sh"', '', checkCommand].join('\n');
 }
 
 export function generatePrettierConfig() {
@@ -485,6 +498,35 @@ export default [
   },
 ];
 `;
+}
+
+export function generateBiomeConfig() {
+  const config = {
+    $schema: 'https://biomejs.dev/schemas/1.9.4/schema.json',
+    formatter: {
+      enabled: true,
+      indentStyle: 'space',
+      indentWidth: 2,
+      lineWidth: 100,
+    },
+    linter: {
+      enabled: true,
+      rules: {
+        recommended: true,
+      },
+    },
+    javascript: {
+      formatter: {
+        semicolons: 'always',
+        quoteStyle: 'single',
+      },
+    },
+    files: {
+      ignore: ['dist', 'node_modules'],
+    },
+  };
+
+  return `${JSON.stringify(config, null, 2)}\n`;
 }
 
 export async function generateLicenseText(

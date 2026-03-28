@@ -1,7 +1,7 @@
 import { exec as execCb, spawn } from 'child_process';
-import { promisify } from 'util';
-import ora from 'ora';
 import cliProgress from 'cli-progress';
+import ora from 'ora';
+import { promisify } from 'util';
 
 const exec = promisify(execCb);
 
