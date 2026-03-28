@@ -1,7 +1,7 @@
 {
   "name": "@tukuyomil032/bricklayer",
   "private": false,
-  "version": "1.0.6",
+  "version": "1.0.44",
   "description": "Interactive TypeScript CLI project scaffolder",
   "type": "module",
   "main": "./dist/index.js",
