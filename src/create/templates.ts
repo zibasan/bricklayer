@@ -502,12 +502,13 @@ export default [
 
 export function generateBiomeConfig() {
   const config = {
-    $schema: 'https://biomejs.dev/schemas/1.9.4/schema.json',
+    $schema: 'https://biomejs.dev/schemas/2.4.9/schema.json',
     formatter: {
       enabled: true,
       indentStyle: 'space',
       indentWidth: 2,
       lineWidth: 100,
+      lineEnding: 'lf',
     },
     linter: {
       enabled: true,
@@ -522,7 +523,7 @@ export function generateBiomeConfig() {
       },
     },
     files: {
-      ignore: ['dist', 'node_modules'],
+      includes: ['src/**/*.ts'],
     },
   };
 
